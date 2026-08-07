@@ -177,9 +177,14 @@ const ProductCard = ({
       </button>
 
       <div className="product-card__body">
-        <div className="product-card__meta">
-          <span>{product.size}</span>
-          <span>{product.condition}</span>
+        <div className="product-card__top">
+          <div className="product-card__meta">
+            <span className="product-card__size">{product.size}</span>
+            <span className="product-card__condition">{product.condition}</span>
+          </div>
+          <div className="product-card__price">
+            <span>{priceFormatter.format(product.price)}</span>
+          </div>
         </div>
 
         <button
@@ -187,13 +192,10 @@ const ProductCard = ({
           className="product-card__title"
           onClick={openDetails}
         >
-          <div>
-            <h3>{product.name}</h3>
-            <strong>{priceFormatter.format(product.price)}</strong>
-          </div>
+          <h3>{product.name}</h3>
         </button>
 
-        <p>{product.description}</p>
+        <p className="product-card__description">{product.description}</p>
 
         <div className="product-card__footer">
           <button
