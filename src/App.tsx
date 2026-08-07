@@ -169,10 +169,6 @@ const ProductCard = ({
             loading="lazy"
             decoding="async"
           />
-          <div className="product-card__badges">
-            <span className="badge badge--glass">{product.category}</span>
-            {product.isNew ? <span className="badge badge--accent">Novo</span> : null}
-          </div>
         </div>
       </button>
 
