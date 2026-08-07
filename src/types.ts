@@ -15,7 +15,15 @@ export type Product = {
   isNew?: boolean;
 };
 
-export type ProductFeed = {
+export type ProductsPagination = {
+  limit: number;
+  offset: number;
+  hasMore: boolean;
+  nextOffset: number;
+};
+
+export type ProductsFeed = {
   products: Product[];
+  pagination: ProductsPagination;
   source: "api" | "mock";
 };

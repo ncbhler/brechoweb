@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { getProducts } from "./lib/products";
-import type { Product, Sector } from "./types";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { getProducts, getSectorsAndCategoriesFromProducts } from "./lib/products";
+import type { Product, ProductsFeed, ProductsPagination, Sector } from "./types";
 
 type Route = "catalogo" | "sobre" | "checkout";
 
@@ -11,12 +11,20 @@ const SPECIAL_CATEGORIES = {
   Novidades: "Novidades"
 } as const;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const DEBOUNCE_MS = 350;
 
 const isNewlyReleased = (createdAt: Date, now: Date = new Date()) => {
   const time = createdAt.getTime();
   const nowMs = now.getTime();
   return Number.isFinite(time) && time > nowMs - SEVEN_DAYS_MS && time <= nowMs + 60_000;
 };
+
+const normalizeForSearch = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
 
 const ROUTES: Array<{ key: Route; label: string }> = [
   { key: "catalogo", label: "Produtos" },
@@ -238,14 +246,6 @@ const PageHeader = ({
   </div>
 );
 
-const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
-type PageSize = (typeof PAGE_SIZE_OPTIONS)[number];
-
-type CartItem = {
-  product: Product;
-  quantity: number;
-};
-
 const PlusIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path
@@ -273,39 +273,147 @@ const TrashIcon = () => (
   </svg>
 );
 
+type CartItem = {
+  product: Product;
+  quantity: number;
+};
+
 function App() {
   const [products, setProducts] = useState<Product[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedSector, setSelectedSector] = useState<SectorFilter>("Todos");
   const [selectedCategory, setSelectedCategory] = useState("Todos");
   const [source, setSource] = useState<"api" | "mock">("mock");
+  const [feed, setFeed] = useState<ProductsFeed | null>(null);
+  const [pagination, setPagination] = useState<ProductsPagination>({
+    limit: 50,
+    offset: 0,
+    hasMore: false,
+    nextOffset: 0
+  });
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [route, setRoute] = useState<Route>("catalogo");
-  const [pageSize, setPageSize] = useState<PageSize>(25);
-  const [currentPage, setCurrentPage] = useState(1);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [checkout, setCheckout] = useState<CheckoutForm>(initialCheckoutForm);
   const [checkoutStep, setCheckoutStep] = useState<"details" | "success">("details");
+
+  const appendFeed = useCallback((next: ProductsFeed) => {
+    setFeed(next);
+    setPagination(next.pagination);
+    setSource(next.source);
+
+    if (next.pagination.offset === 0) {
+      setProducts(next.products);
+      return;
+    }
+
+    setProducts((previousProducts) => {
+      const seen = new Set(previousProducts.map(p => p.id));
+      const extras = next.products.filter((product) => !seen.has(product.id));
+      return [...previousProducts, ...extras];
+    });
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedQuery(query);
+    }, DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [query]);
+
+  const activeCategoryForApi = useMemo(() => {
+    if (selectedCategory === "Todos" || selectedCategory === SPECIAL_CATEGORIES.Novidades) {
+      return undefined;
+    }
+
+    return selectedCategory;
+  }, [selectedCategory]);
 
   useEffect(() => {
     const controller = new AbortController();
 
     const loadProducts = async () => {
-      setIsLoading(true);
+      if (pagination.offset === 0) {
+        setIsInitialLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
 
-      const result = await getProducts(controller.signal);
-      setProducts(result.products);
-      setSource(result.source);
-      setIsLoading(false);
+      try {
+        const result = await getProducts(
+          {
+            limit: pagination.limit,
+            offset: pagination.offset,
+            q: debouncedQuery || undefined,
+            categoria: activeCategoryForApi
+          },
+          controller.signal
+        );
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        appendFeed(result);
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsInitialLoading(false);
+          setIsLoadingMore(false);
+        }
+      }
     };
 
     void loadProducts();
 
     return () => controller.abort();
-  }, []);
+  }, [debouncedQuery, activeCategoryForApi, pagination.limit, pagination.offset, appendFeed]);
+
+  useEffect(() => {
+    setProducts([]);
+    setPagination(previous => ({ ...previous, offset: 0, hasMore: false, nextOffset: 0 }));
+  }, [debouncedQuery, activeCategoryForApi, pagination.limit]);
+
+  const filteredProducts = useMemo(() => {
+    const now = new Date();
+    const isNovidades = selectedCategory === SPECIAL_CATEGORIES.Novidades;
+    const normalizedQuery = normalizeForSearch(debouncedQuery);
+    const normalizedSector = selectedSector === "Todos" ? null : selectedSector;
+
+    const base = products.filter(product => {
+      const matchesSector = !normalizedSector || product.sector === normalizedSector;
+
+      const matchesCategory =
+        selectedCategory === "Todos"
+          ? true
+          : isNovidades
+            ? isNewlyReleased(product.createdAt, now)
+            : product.category === selectedCategory;
+
+      let matchesQuery = true;
+      if (normalizedQuery) {
+        const haystack = normalizeForSearch(
+          `${product.name} ${product.description} ${product.category} ${product.size} ${product.id}`
+        );
+        matchesQuery = haystack.includes(normalizedQuery);
+      }
+
+      return matchesSector && matchesCategory && matchesQuery;
+    });
+
+    if (isNovidades) {
+      return base
+        .slice()
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    }
+
+    return base;
+  }, [products, debouncedQuery, selectedCategory, selectedSector]);
 
   const isAnyDrawerOpen = isMenuOpen || isCartOpen;
   const isProductModalOpen = Boolean(selectedProduct);
@@ -392,84 +500,32 @@ function App() {
   }, [source]);
 
   const sectorCategoryGroups = useMemo(() => {
-    return SECTORS.reduce<Record<Sector, string[]>>((acc, sector) => {
-      const sectorProducts = products.filter((product) => product.sector === sector);
-      const categoriesForSector = Array.from(
-        new Set(sectorProducts.map((product) => product.category))
-      );
-
-      acc[sector] = categoriesForSector;
-      return acc;
-    }, {} as Record<Sector, string[]>);
+    const groups = getSectorsAndCategoriesFromProducts(products);
+    return groups.sectorCategories;
   }, [products]);
 
   const categories = useMemo(() => {
-    const baseProducts =
+    const groups = getSectorsAndCategoriesFromProducts(products);
+    const realCategories =
       selectedSector === "Todos"
-        ? products
-        : products.filter((product) => product.sector === selectedSector);
+        ? groups.allCategories
+        : groups.sectorCategories[selectedSector] ?? [];
 
-    const realCategories = Array.from(
-      new Set(baseProducts.map((product) => product.category))
-    );
     return ["Todos", SPECIAL_CATEGORIES.Novidades, ...realCategories];
   }, [products, selectedSector]);
 
-  const filteredProducts = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const now = new Date();
-    const isNovidades = selectedCategory === SPECIAL_CATEGORIES.Novidades;
+  const canLoadMore =
+    pagination.hasMore &&
+    !isInitialLoading &&
+    !isLoadingMore &&
+    selectedCategory !== SPECIAL_CATEGORIES.Novidades &&
+    !debouncedQuery &&
+    selectedSector === "Todos";
 
-    const base = products.filter((product) => {
-      const matchesSector =
-        selectedSector === "Todos" || product.sector === selectedSector;
-
-      const matchesCategory =
-        selectedCategory === "Todos"
-          ? true
-          : isNovidades
-            ? isNewlyReleased(product.createdAt, now)
-            : product.category === selectedCategory;
-
-      const haystack = `${product.name} ${product.description} ${product.category}`.toLowerCase();
-      const matchesQuery = !normalizedQuery || haystack.includes(normalizedQuery);
-
-      return matchesSector && matchesCategory && matchesQuery;
-    });
-
-    if (isNovidades) {
-      return base
-        .slice()
-        .sort(
-          (a, b) =>
-            b.createdAt.getTime() - a.createdAt.getTime()
-        );
-    }
-
-    return base;
-  }, [products, query, selectedCategory, selectedSector]);
-
-  const totalPages = useMemo(() => {
-    if (!filteredProducts.length) {
-      return 1;
-    }
-
-    return Math.max(1, Math.ceil(filteredProducts.length / pageSize));
-  }, [filteredProducts.length, pageSize]);
-
-  const safePage = useMemo(
-    () => Math.min(currentPage, totalPages),
-    [currentPage, totalPages]
-  );
-
-  const paginatedProducts = useMemo(() => {
-    const startIndex = (safePage - 1) * pageSize;
-    return filteredProducts.slice(startIndex, startIndex + pageSize);
-  }, [filteredProducts, pageSize, safePage]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [query, selectedCategory, pageSize]);
+  const handleLoadMore = () => {
+    if (!canLoadMore) return;
+    setPagination(previous => ({ ...previous, offset: previous.nextOffset }));
+  };
 
   const cartSummary = useMemo(() => {
     const count = cartItems.reduce((total, item) => total + item.quantity, 0);
@@ -572,7 +628,8 @@ function App() {
     setSelectedSector(sector);
     setSelectedCategory("Todos");
     setQuery("");
-    setCurrentPage(1);
+    setDebouncedQuery("");
+    setPagination(previous => ({ ...previous, offset: 0 }));
     setIsMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -585,7 +642,8 @@ function App() {
     setSelectedSector(sector);
     setSelectedCategory(category);
     setQuery("");
-    setCurrentPage(1);
+    setDebouncedQuery("");
+    setPagination(previous => ({ ...previous, offset: 0 }));
     setIsMenuOpen(false);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1009,7 +1067,7 @@ function App() {
                     onClick={() => {
                       setSelectedSector(sector);
                       setSelectedCategory("Todos");
-                      setCurrentPage(1);
+                      setPagination(previous => ({ ...previous, offset: 0 }));
                     }}
                   >
                     {sector}
@@ -1034,7 +1092,7 @@ function App() {
                         .join(" ")}
                       onClick={() => {
                         setSelectedCategory(category);
-                        setCurrentPage(1);
+                        setPagination(previous => ({ ...previous, offset: 0 }));
                       }}
                     >
                       {category}
@@ -1044,7 +1102,7 @@ function App() {
               </div>
             </div>
 
-            {isLoading ? (
+            {isInitialLoading ? (
               <div className="product-grid product-grid--two">
                 {Array.from({ length: 6 }).map((_, index) => (
                   <ProductSkeleton key={index} />
@@ -1053,7 +1111,7 @@ function App() {
             ) : filteredProducts.length ? (
               <>
                 <div className="product-grid product-grid--two">
-                  {paginatedProducts.map((product) => (
+                  {filteredProducts.map((product) => (
                     <ProductCard
                       key={product.id}
                       product={product}
@@ -1065,65 +1123,17 @@ function App() {
 
                 <div className="catalogo-pagination" aria-label="Paginacao do catalogo">
                   <div className="pagination">
-                    <button
-                      type="button"
-                      className="pagination__nav"
-                      disabled={safePage === 1}
-                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                    >
-                      Anterior
-                    </button>
-
-                    <div className="pagination__pages" role="tablist" aria-label="Paginas">
-                      {Array.from({ length: totalPages }).map((_, index) => {
-                        const page = index + 1;
-                        return (
-                          <button
-                            key={page}
-                            type="button"
-                            className={
-                              page === safePage
-                                ? "pagination__page pagination__page--active"
-                                : "pagination__page"
-                            }
-                            onClick={() => setCurrentPage(page)}
-                          >
-                            {page}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <button
-                      type="button"
-                      className="pagination__nav"
-                      disabled={safePage === totalPages}
-                      onClick={() =>
-                        setCurrentPage((page) => Math.min(totalPages, page + 1))
-                      }
-                    >
-                      Proxima
-                    </button>
-                  </div>
-
-                  <div className="per-page">
-                    <span>Exibir por pagina:</span>
-                    <div className="per-page__options" role="tablist" aria-label="Quantidade por pagina">
-                      {PAGE_SIZE_OPTIONS.map((size) => (
-                        <button
-                          key={size}
-                          type="button"
-                          className={
-                            size === pageSize
-                              ? "per-page__button per-page__button--active"
-                              : "per-page__button"
-                          }
-                          onClick={() => setPageSize(size)}
-                        >
-                          {size}
-                        </button>
-                      ))}
-                    </div>
+                    {isLoadingMore ? (
+                      <div className="pagination__loading">Carregando mais pecas...</div>
+                    ) : canLoadMore ? (
+                      <button
+                        type="button"
+                        className="button pagination__load-more"
+                        onClick={handleLoadMore}
+                      >
+                        Carregar mais
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </>
