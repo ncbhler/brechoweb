@@ -11,6 +11,8 @@ export type ProductsQuery = {
   offset?: number;
   q?: string;
   categoria?: string;
+  genero?: string;
+  infantil?: string;
 };
 
 export type ProductsPagination = {
@@ -420,6 +422,14 @@ const buildProductsUrl = (query: ProductsQuery) => {
 
   if (typeof query.categoria === "string" && query.categoria.trim()) {
     params.set("categoria", query.categoria.trim());
+  }
+
+  if (typeof query.genero === "string" && query.genero.trim()) {
+    params.set("genero", query.genero.trim());
+  }
+
+  if (typeof query.infantil === "string" && query.infantil.trim()) {
+    params.set("infantil", query.infantil.trim());
   }
 
   const search = params.toString();

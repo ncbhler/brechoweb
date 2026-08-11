@@ -124,6 +124,109 @@ const CloseIcon = () => (
   </svg>
 );
 
+const HangerPlaceholder = ({
+  title,
+  subtitle
+}: {
+  title: string;
+  subtitle?: string;
+}) => (
+  <svg
+    className="product-card__placeholder-svg"
+    viewBox="0 0 320 400"
+    preserveAspectRatio="xMidYMid meet"
+    aria-hidden="true"
+    role="img"
+  >
+    <defs>
+      <linearGradient id="hangerBg" x1="0" x2="0" y1="0" y2="1">
+        <stop offset="0%" stopColor="#fff0f6" />
+        <stop offset="55%" stopColor="#fad8e5" />
+        <stop offset="100%" stopColor="#f4c0d3" />
+      </linearGradient>
+      <linearGradient id="hangerMetal" x1="0" x2="1" y1="0" y2="1">
+        <stop offset="0%" stopColor="#b5b9c2" />
+        <stop offset="100%" stopColor="#858a94" />
+      </linearGradient>
+      <pattern
+        id="hangerDots"
+        x="0"
+        y="0"
+        width="14"
+        height="14"
+        patternUnits="userSpaceOnUse"
+      >
+        <circle cx="1.5" cy="1.5" r="1.5" fill="rgba(255,255,255,0.42)" />
+      </pattern>
+    </defs>
+    <rect x="0" y="0" width="320" height="400" fill="url(#hangerBg)" />
+    <rect x="0" y="0" width="320" height="400" fill="url(#hangerDots)" />
+    <line
+      x1="160"
+      y1="44"
+      x2="160"
+      y2="118"
+      stroke="url(#hangerMetal)"
+      strokeWidth="6"
+      strokeLinecap="round"
+    />
+    <path
+      d="M160 62 C172 62, 182 72, 182 86"
+      fill="none"
+      stroke="url(#hangerMetal)"
+      strokeWidth="6"
+      strokeLinecap="round"
+    />
+    <path
+      d="M76 196 L76 168 C76 144, 122 122, 160 122 C198 122, 244 144, 244 168 L244 196"
+      fill="none"
+      stroke="url(#hangerMetal)"
+      strokeWidth="8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <path
+      d="M70 202 C58 228, 52 260, 52 300 C52 350, 92 376, 160 376 C228 376, 268 350, 268 300 C268 260, 262 228, 250 202 L236 202 C248 226, 254 256, 254 298 C254 340, 222 362, 160 362 C98 362, 66 340, 66 298 C66 256, 72 226, 84 202 Z"
+      fill="rgba(255,255,255,0.5)"
+    />
+    <line
+      x1="160"
+      y1="122"
+      x2="160"
+      y2="196"
+      stroke="rgba(255,255,255,0.55)"
+      strokeWidth="4"
+      strokeDasharray="6 8"
+      strokeLinecap="round"
+    />
+    <text
+      x="160"
+      y="260"
+      textAnchor="middle"
+      fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
+      fontSize="26"
+      fontWeight="800"
+      fill="#c13563"
+      letterSpacing="-0.02em"
+    >
+      {title}
+    </text>
+    {subtitle ? (
+      <text
+        x="160"
+        y="296"
+        textAnchor="middle"
+        fontFamily="Inter, ui-sans-serif, system-ui, sans-serif"
+        fontSize="16"
+        fontWeight="500"
+        fill="rgba(146, 38, 77, 0.75)"
+      >
+        {subtitle}
+      </text>
+    ) : null}
+  </svg>
+);
+
 const ShareIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path
@@ -161,6 +264,14 @@ const ProductCard = ({
     }
   };
 
+  const hasImage = Boolean(product.imageUrl && product.imageUrl.trim());
+  const placeholderLabel =
+    product.category && product.category.length > 14
+      ? product.category.slice(0, 14)
+      : product.category || product.sector;
+  const placeholderSub =
+    product.size && product.size !== "Unico" ? product.size : undefined;
+
   return (
     <article className="product-card">
       <button
@@ -170,13 +281,22 @@ const ProductCard = ({
         aria-label={`Ver detalhes de ${product.name}`}
       >
         <div className="product-card__image-wrap">
-          <img
-            className="product-card__image"
-            src={product.imageUrl}
-            alt={product.name}
-            loading="lazy"
-            decoding="async"
-          />
+          {hasImage ? (
+            <img
+              className="product-card__image"
+              src={product.imageUrl}
+              alt={product.name}
+              loading="lazy"
+              decoding="async"
+              onError={(event) => {
+                if (event.currentTarget.parentElement) {
+                  event.currentTarget.style.display = "none";
+                }
+              }}
+            />
+          ) : (
+            <HangerPlaceholder title={placeholderLabel} subtitle={placeholderSub} />
+          )}
         </div>
       </button>
 
@@ -335,6 +455,16 @@ function App() {
     return selectedCategory;
   }, [selectedCategory]);
 
+  const activeSectorForApi = useMemo(() => {
+    if (selectedSector === "Todos") {
+      return { genero: undefined, infantil: undefined };
+    }
+    if (selectedSector === "Infantil") {
+      return { genero: undefined, infantil: "true" };
+    }
+    return { genero: selectedSector.toLowerCase(), infantil: undefined };
+  }, [selectedSector]);
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -351,7 +481,9 @@ function App() {
             limit: pagination.limit,
             offset: pagination.offset,
             q: debouncedQuery || undefined,
-            categoria: activeCategoryForApi
+            categoria: activeCategoryForApi,
+            genero: activeSectorForApi.genero,
+            infantil: activeSectorForApi.infantil
           },
           controller.signal
         );
@@ -372,12 +504,12 @@ function App() {
     void loadProducts();
 
     return () => controller.abort();
-  }, [debouncedQuery, activeCategoryForApi, pagination.limit, pagination.offset, appendFeed]);
+  }, [debouncedQuery, activeCategoryForApi, activeSectorForApi, pagination.limit, pagination.offset, appendFeed]);
 
   useEffect(() => {
     setProducts([]);
     setPagination(previous => ({ ...previous, offset: 0, hasMore: false, nextOffset: 0 }));
-  }, [debouncedQuery, activeCategoryForApi, pagination.limit]);
+  }, [debouncedQuery, activeCategoryForApi, activeSectorForApi, pagination.limit]);
 
   const filteredProducts = useMemo(() => {
     const now = new Date();
@@ -519,8 +651,7 @@ function App() {
     !isInitialLoading &&
     !isLoadingMore &&
     selectedCategory !== SPECIAL_CATEGORIES.Novidades &&
-    !debouncedQuery &&
-    selectedSector === "Todos";
+    !debouncedQuery;
 
   const handleLoadMore = () => {
     if (!canLoadMore) return;

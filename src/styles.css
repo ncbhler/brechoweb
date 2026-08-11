@@ -1789,6 +1789,31 @@ a {
   cursor: pointer;
 }
 
+.product-card__image-wrap {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  background: linear-gradient(180deg, #fff0f6 0%, #fad8e5 100%);
+}
+
+.product-card__image {
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: cover;
+  display: block;
+  background: #f7f7fa;
+}
+
+.product-card__placeholder-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .product-card__body {
   display: grid;
   gap: 0.9rem;
