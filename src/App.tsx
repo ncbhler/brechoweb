@@ -1837,9 +1837,6 @@ function App() {
 
               <div className="product-modal__info">
                 <div className="product-modal__summary">
-                  <span className="eyebrow eyebrow--muted">
-                    Ref. {selectedProduct.id}
-                  </span>
                   <h2 id="product-modal-title" className="product-modal__title">
                     {selectedProduct.name}
                   </h2>
