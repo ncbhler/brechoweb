@@ -1838,7 +1838,7 @@ function App() {
               <div className="product-modal__info">
                 <div className="product-modal__summary">
                   <span className="eyebrow eyebrow--muted">
-                    {selectedProduct.condition} · ref. {selectedProduct.id}
+                    Ref. {selectedProduct.id}
                   </span>
                   <h2 id="product-modal-title" className="product-modal__title">
                     {selectedProduct.name}
@@ -1854,20 +1854,24 @@ function App() {
 
                 <dl className="product-modal__specs">
                   <div>
-                    <dt>Marca</dt>
-                    <dd>{selectedProduct.brand || "Nao informado"}</dd>
+                    <dt>Descricao</dt>
+                    <dd>{selectedProduct.description}</dd>
                   </div>
                   <div>
                     <dt>Categoria</dt>
                     <dd>{selectedProduct.category}</dd>
                   </div>
                   <div>
-                    <dt>Cor</dt>
-                    <dd>{selectedProduct.color || "Nao informada"}</dd>
+                    <dt>Marca</dt>
+                    <dd>{selectedProduct.brand || "Nao informado"}</dd>
                   </div>
                   <div>
                     <dt>Tamanho</dt>
                     <dd>{selectedProduct.size}</dd>
+                  </div>
+                  <div>
+                    <dt>Cor</dt>
+                    <dd>{selectedProduct.color || "Nao informada"}</dd>
                   </div>
                   <div>
                     <dt>Genero / Setor</dt>
@@ -1878,12 +1882,8 @@ function App() {
                     <dd>{selectedProduct.sector === "Infantil" ? "Infantil" : "Adulto"}</dd>
                   </div>
                   <div>
-                    <dt>Condicao</dt>
-                    <dd>{selectedProduct.condition}</dd>
-                  </div>
-                  <div>
-                    <dt>Cadastro</dt>
-                    <dd>{dateFormatter.format(selectedProduct.createdAt)}</dd>
+                    <dt>Preco</dt>
+                    <dd>{priceFormatter.format(selectedProduct.price)}</dd>
                   </div>
                 </dl>
 
