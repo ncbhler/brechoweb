@@ -242,6 +242,15 @@ const ShareIcon = () => (
   </svg>
 );
 
+const ZoomInIcon = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path
+      d="M11 5.25a5.75 5.75 0 1 1 0 11.5a5.75 5.75 0 0 1 0-11.5Zm0-1.5a7.25 7.25 0 1 0 4.58 12.63l3.27 3.27a.75.75 0 1 0 1.06-1.06l-3.27-3.27A7.25 7.25 0 0 0 11 3.75ZM11.75 8a.75.75 0 0 0-1.5 0v2.25H8a.75.75 0 0 0 0 1.5h2.25V14a.75.75 0 0 0 1.5 0v-2.25H14a.75.75 0 0 0 0-1.5h-2.25V8Z"
+      fill="currentColor"
+    />
+  </svg>
+);
+
 const ProductSkeleton = () => (
   <article className="product-card product-card--skeleton" aria-hidden="true">
     <div className="skeleton skeleton-image" />
@@ -425,6 +434,7 @@ function App() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [route, setRoute] = useState<Route>("catalogo");
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isZoomImageOpen, setIsZoomImageOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutForm>(initialCheckoutForm);
   const [checkoutStep, setCheckoutStep] = useState<"details" | "success">("details");
 
@@ -555,7 +565,7 @@ function App() {
 
   const isAnyDrawerOpen = isMenuOpen || isCartOpen;
   const isProductModalOpen = Boolean(selectedProduct);
-  const isAnyOverlayOpen = isAnyDrawerOpen || isProductModalOpen;
+  const isAnyOverlayOpen = isAnyDrawerOpen || isProductModalOpen || isZoomImageOpen;
 
   useEffect(() => {
     if (!isProductModalOpen) {
@@ -616,6 +626,7 @@ function App() {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        setIsZoomImageOpen(false);
         setIsMenuOpen(false);
         setIsCartOpen(false);
         setSelectedProduct(null);
@@ -1832,6 +1843,23 @@ function App() {
                     subtitle={selectedProduct.size && selectedProduct.size !== "Unico" ? selectedProduct.size : undefined}
                   />
                 )}
+                {selectedProduct.imageUrl ? (
+                  <button
+                    type="button"
+                    className="product-modal__media-button"
+                    aria-label="Ampliar imagem"
+                    title="Clique para ampliar a imagem"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setIsZoomImageOpen(true);
+                    }}
+                  />
+                ) : null}
+                {selectedProduct.imageUrl ? (
+                  <span className="product-modal__zoom-hint">
+                    <ZoomInIcon /> Ampliar
+                  </span>
+                ) : null}
               </div>
 
               <div className="product-modal__info">
@@ -1948,6 +1976,35 @@ function App() {
                 </div>
               </section>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {isZoomImageOpen && selectedProduct?.imageUrl ? (
+        <div
+          className="image-zoom-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Ampliacao da imagem do produto"
+          onClick={() => setIsZoomImageOpen(false)}
+        >
+          <button
+            type="button"
+            className="image-zoom-overlay__button"
+            aria-label="Fechar ampliacao"
+            onClick={(event) => {
+              event.stopPropagation();
+              setIsZoomImageOpen(false);
+            }}
+          >
+            <CloseIcon />
+          </button>
+          <div className="image-zoom-overlay__frame" onClick={(event) => event.stopPropagation()}>
+            <img
+              src={selectedProduct.imageUrl}
+              alt={selectedProduct.name}
+              onClick={(event) => event.stopPropagation()}
+            />
           </div>
         </div>
       ) : null}

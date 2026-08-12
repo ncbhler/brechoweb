@@ -1794,16 +1794,25 @@ a {
   overflow: hidden;
   width: 100%;
   aspect-ratio: 4 / 5;
-  background: linear-gradient(180deg, #fff0f6 0%, #fad8e5 100%);
+  background:
+    radial-gradient(circle at 30% 15%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.28) 40%, transparent 62%),
+    linear-gradient(180deg, #fff0f6 0%, #fad8e5 100%);
+  border-radius: 1.55rem 1.55rem 0 0;
+  padding: 0.85rem;
+  isolation: isolate;
 }
 
 .product-card__image {
+  position: relative;
   width: 100%;
   height: 100%;
-  aspect-ratio: 4 / 5;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
   display: block;
-  background: #f7f7fa;
+  background: transparent;
+  filter: drop-shadow(0 10px 22px rgba(17, 17, 17, 0.12)) drop-shadow(0 3px 6px rgba(17, 17, 17, 0.06));
+  border-radius: 1.15rem;
+  z-index: 0;
 }
 
 .product-card__placeholder-svg {
@@ -1812,6 +1821,163 @@ a {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+.product-modal__media {
+  width: 100%;
+  border-radius: 1.5rem;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 30% 12%, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.35) 42%, transparent 68%),
+    linear-gradient(180deg, #fff0f6 0%, #fad8e5 100%);
+  box-shadow:
+    0 18px 44px rgba(17, 17, 17, 0.12),
+    0 5px 14px rgba(17, 17, 17, 0.05);
+  padding: 1.1rem;
+  position: relative;
+}
+
+.product-modal__media img,
+.product-modal__media .product-card__placeholder-svg {
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  background: transparent;
+  filter: drop-shadow(0 14px 28px rgba(17, 17, 17, 0.12)) drop-shadow(0 4px 8px rgba(17, 17, 17, 0.06));
+  border-radius: 1.15rem;
+  position: relative;
+}
+
+.product-modal__media-button {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: zoom-in;
+  border-radius: inherit;
+}
+
+.product-modal__media-button:focus-visible {
+  outline: 2px solid #d13c70;
+  outline-offset: -6px;
+}
+
+.product-modal__zoom-hint {
+  position: absolute;
+  top: 1.1rem;
+  right: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.75rem;
+  background: rgba(17, 17, 17, 0.72);
+  color: #ffffff;
+  font-size: 0.74rem;
+  font-weight: 600;
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: 0 6px 14px rgba(17, 17, 17, 0.18);
+}
+
+.product-modal__zoom-hint svg {
+  width: 0.95rem;
+  height: 0.95rem;
+}
+
+.image-zoom-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(10, 10, 10, 0.86);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  cursor: zoom-out;
+}
+
+.image-zoom-overlay__button {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+  transition: transform 160ms ease, background 160ms ease;
+  z-index: 3;
+}
+
+.image-zoom-overlay__button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.image-zoom-overlay__button svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.image-zoom-overlay__frame {
+  max-width: min(100%, 1400px);
+  max-height: 100%;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 3.5rem 1rem 1rem;
+}
+
+.image-zoom-overlay img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+  border-radius: 1.25rem;
+  box-shadow:
+    0 40px 80px rgba(0, 0, 0, 0.35),
+    0 12px 28px rgba(0, 0, 0, 0.22);
+  background: rgba(255, 255, 255, 0.96);
+  padding: 0.4rem;
+}
+
+@media (min-width: 1024px) {
+  .product-card__image-wrap {
+    padding: 1rem;
+  }
+
+  .product-modal__media {
+    padding: 1.3rem;
+  }
+
+  .product-modal__media img,
+  .product-modal__media .product-card__placeholder-svg {
+    border-radius: 1.25rem;
+  }
 }
 
 .product-card__body {
