@@ -79,6 +79,12 @@ const priceFormatter = new Intl.NumberFormat("pt-BR", {
   currency: "BRL"
 });
 
+const dateFormatter = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric"
+});
+
 const SearchIcon = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path
@@ -297,16 +303,6 @@ const ProductCard = ({
           ) : (
             <HangerPlaceholder title={placeholderLabel} subtitle={placeholderSub} />
           )}
-          <div className="product-card__badges">
-            {product.sector === "Infantil" ? (
-              <span className="product-card__badge product-card__badge--kids">Infantil</span>
-            ) : (
-              <span className="product-card__badge product-card__badge--adult">Adulto</span>
-            )}
-            {product.isNew ? (
-              <span className="product-card__badge product-card__badge--new">Novidade</span>
-            ) : null}
-          </div>
         </div>
       </button>
 
@@ -315,9 +311,6 @@ const ProductCard = ({
           <div className="product-card__meta">
             <span className="product-card__size">{product.size}</span>
             <span className="product-card__condition">{product.condition}</span>
-            <span className="product-card__sector">
-              {product.sector === "Infantil" ? "Infantil" : product.sector}
-            </span>
           </div>
           <div className="product-card__price">
             <span>{priceFormatter.format(product.price)}</span>
@@ -331,27 +324,6 @@ const ProductCard = ({
         >
           <h3>{product.name}</h3>
         </button>
-
-        <ul className="product-card__attrs">
-          {product.brand ? (
-            <li>
-              <span>Marca</span>
-              <strong>{product.brand}</strong>
-            </li>
-          ) : null}
-          {product.category ? (
-            <li>
-              <span>Categoria</span>
-              <strong>{product.category}</strong>
-            </li>
-          ) : null}
-          {product.color ? (
-            <li>
-              <span>Cor</span>
-              <strong>{product.color}</strong>
-            </li>
-          ) : null}
-        </ul>
 
         <p className="product-card__description">{product.description}</p>
 
@@ -1836,6 +1808,11 @@ function App() {
 
             <div className="product-modal__tags product-modal__tags--inline">
               <span className="badge badge--glass">{selectedProduct.sector}</span>
+              {selectedProduct.sector === "Infantil" ? (
+                <span className="badge badge--kids">Infantil</span>
+              ) : (
+                <span className="badge badge--adult">Adulto</span>
+              )}
               {selectedProduct.isNew ? (
                 <span className="badge badge--accent">Novo</span>
               ) : null}
@@ -1843,12 +1820,19 @@ function App() {
 
             <div className="product-modal__body">
               <div className="product-modal__media">
-                <img
-                  src={selectedProduct.imageUrl}
-                  alt={selectedProduct.name}
-                  loading="lazy"
-                  decoding="async"
-                />
+                {selectedProduct.imageUrl ? (
+                  <img
+                    src={selectedProduct.imageUrl}
+                    alt={selectedProduct.name}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                ) : (
+                  <HangerPlaceholder
+                    title={selectedProduct.category || selectedProduct.sector}
+                    subtitle={selectedProduct.size && selectedProduct.size !== "Unico" ? selectedProduct.size : undefined}
+                  />
+                )}
               </div>
 
               <div className="product-modal__info">
@@ -1870,20 +1854,36 @@ function App() {
 
                 <dl className="product-modal__specs">
                   <div>
-                    <dt>Tamanho</dt>
-                    <dd>{selectedProduct.size}</dd>
-                  </div>
-                  <div>
-                    <dt>Setor</dt>
-                    <dd>{selectedProduct.sector}</dd>
+                    <dt>Marca</dt>
+                    <dd>{selectedProduct.brand || "Nao informado"}</dd>
                   </div>
                   <div>
                     <dt>Categoria</dt>
                     <dd>{selectedProduct.category}</dd>
                   </div>
                   <div>
+                    <dt>Cor</dt>
+                    <dd>{selectedProduct.color || "Nao informada"}</dd>
+                  </div>
+                  <div>
+                    <dt>Tamanho</dt>
+                    <dd>{selectedProduct.size}</dd>
+                  </div>
+                  <div>
+                    <dt>Genero / Setor</dt>
+                    <dd>{selectedProduct.sector}</dd>
+                  </div>
+                  <div>
+                    <dt>Publico alvo</dt>
+                    <dd>{selectedProduct.sector === "Infantil" ? "Infantil" : "Adulto"}</dd>
+                  </div>
+                  <div>
                     <dt>Condicao</dt>
                     <dd>{selectedProduct.condition}</dd>
+                  </div>
+                  <div>
+                    <dt>Cadastro</dt>
+                    <dd>{dateFormatter.format(selectedProduct.createdAt)}</dd>
                   </div>
                 </dl>
 
