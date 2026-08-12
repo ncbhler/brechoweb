@@ -303,6 +303,8 @@ const toProduct = (item: RawRecord, index: number): Product | null => {
   );
 
   const category = formatCategory(item.category ?? item.categoria);
+  const brand = String(item.brand ?? item.marca ?? "").trim();
+  const color = String(item.color ?? item.cor ?? "").trim();
   const description = String(
     descriptionCandidate ??
       "Peca selecionada com curadoria para compor um guarda-roupa autoral."
@@ -327,6 +329,8 @@ const toProduct = (item: RawRecord, index: number): Product | null => {
     price: price <= 0 ? 0 : price,
     imageUrl: typeof imageUrl === "string" ? imageUrl : "",
     category,
+    brand,
+    color,
     size,
     condition,
     sector,

@@ -7,7 +7,9 @@ export type Product = {
   price: number;
   imageUrl: string;
   category: string;
+  brand: string;
   size: string;
+  color: string;
   condition: string;
   sector: Sector;
   createdAt: Date;
