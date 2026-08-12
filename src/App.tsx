@@ -1820,9 +1820,7 @@ function App() {
             <div className="product-modal__tags product-modal__tags--inline">
               {selectedProduct.isKids ?? selectedProduct.sector === "Infantil" ? (
                 <span className="badge badge--kids">Infantil</span>
-              ) : (
-                <span className="badge badge--adult">Adulto</span>
-              )}
+              ) : null}
               {selectedProduct.isNew ? (
                 <span className="badge badge--accent">Novo</span>
               ) : null}
