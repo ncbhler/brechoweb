@@ -1848,15 +1848,7 @@ function App() {
                   </strong>
                 </div>
 
-                <p className="product-modal__description">
-                  {selectedProduct.description}
-                </p>
-
                 <dl className="product-modal__specs">
-                  <div>
-                    <dt>Descricao</dt>
-                    <dd>{selectedProduct.description}</dd>
-                  </div>
                   <div>
                     <dt>Categoria</dt>
                     <dd>{selectedProduct.category}</dd>
@@ -1880,10 +1872,6 @@ function App() {
                   <div>
                     <dt>Publico alvo</dt>
                     <dd>{selectedProduct.sector === "Infantil" ? "Infantil" : "Adulto"}</dd>
-                  </div>
-                  <div>
-                    <dt>Preco</dt>
-                    <dd>{priceFormatter.format(selectedProduct.price)}</dd>
                   </div>
                 </dl>
 
