@@ -36,28 +36,14 @@ type PaymentMethod = "pix" | "card" | "boleto";
 type CheckoutForm = {
   fullName: string;
   phone: string;
-  email: string;
-  cep: string;
-  street: string;
-  number: string;
-  neighborhood: string;
-  city: string;
-  state: string;
-  complement: string;
+  cpf: string;
   payment: PaymentMethod;
 };
 
 const initialCheckoutForm: CheckoutForm = {
   fullName: "",
   phone: "",
-  email: "",
-  cep: "",
-  street: "",
-  number: "",
-  neighborhood: "",
-  city: "",
-  state: "",
-  complement: "",
+  cpf: "",
   payment: "pix"
 };
 
@@ -66,6 +52,14 @@ const phoneMask = (value: string) => {
   if (digits.length <= 2) return digits;
   if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+};
+
+const cpfMask = (value: string) => {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
 };
 
 const cepMask = (value: string) => {
@@ -1481,7 +1475,7 @@ function App() {
                 <div className="checkout-form" role="form" aria-label="Dados do pedido">
                   <article className="surface-card checkout-block">
                     <span className="surface-card__tag">1. Seus dados</span>
-                    <h2 className="surface-card__title">Para quem vamos enviar suas pecas?</h2>
+                    <h2 className="surface-card__title">Para quem vamos reservar suas pecas?</h2>
 
                     <div className="checkout-field-grid">
                       <label className="checkout-field checkout-field--full">
@@ -1514,120 +1508,19 @@ function App() {
                       </label>
 
                       <label className="checkout-field">
-                        <span>E-mail</span>
-                        <input
-                          type="email"
-                          autoComplete="email"
-                          placeholder="voce@email.com"
-                          value={checkout.email}
-                          onChange={(event) =>
-                            setCheckout({ ...checkout, email: event.target.value })
-                          }
-                        />
-                      </label>
-                    </div>
-                  </article>
-
-                  <article className="surface-card checkout-block">
-                    <span className="surface-card__tag">2. Entrega</span>
-                    <h2 className="surface-card__title">Onde voce quer receber?</h2>
-
-                    <div className="checkout-field-grid">
-                      <label className="checkout-field checkout-field--cep">
-                        <span>CEP</span>
+                        <span>CPF</span>
                         <input
                           type="text"
-                          autoComplete="postal-code"
-                          placeholder="00000-000"
-                          value={checkout.cep}
+                          autoComplete="off"
+                          placeholder="000.000.000-00"
+                          value={checkout.cpf}
                           onChange={(event) =>
                             setCheckout({
                               ...checkout,
-                              cep: cepMask(event.target.value)
+                              cpf: cpfMask(event.target.value)
                             })
                           }
                         />
-                      </label>
-
-                      <label className="checkout-field checkout-field--full">
-                        <span>Endereco</span>
-                        <input
-                          type="text"
-                          autoComplete="street-address"
-                          placeholder="Rua, avenida ou travessa"
-                          value={checkout.street}
-                          onChange={(event) =>
-                            setCheckout({ ...checkout, street: event.target.value })
-                          }
-                        />
-                      </label>
-
-                      <label className="checkout-field">
-                        <span>Numero</span>
-                        <input
-                          type="text"
-                          placeholder="123 ou S/N"
-                          value={checkout.number}
-                          onChange={(event) =>
-                            setCheckout({ ...checkout, number: event.target.value })
-                          }
-                        />
-                      </label>
-
-                      <label className="checkout-field">
-                        <span>Complemento</span>
-                        <input
-                          type="text"
-                          placeholder="Apartamento, bloco, referência"
-                          value={checkout.complement}
-                          onChange={(event) =>
-                            setCheckout({ ...checkout, complement: event.target.value })
-                          }
-                        />
-                      </label>
-
-                      <label className="checkout-field">
-                        <span>Bairro</span>
-                        <input
-                          type="text"
-                          autoComplete="address-level2"
-                          placeholder="Centro"
-                          value={checkout.neighborhood}
-                          onChange={(event) =>
-                            setCheckout({ ...checkout, neighborhood: event.target.value })
-                          }
-                        />
-                      </label>
-
-                      <label className="checkout-field">
-                        <span>Cidade</span>
-                        <input
-                          type="text"
-                          autoComplete="address-level1"
-                          placeholder="Sao Paulo"
-                          value={checkout.city}
-                          onChange={(event) =>
-                            setCheckout({ ...checkout, city: event.target.value })
-                          }
-                        />
-                      </label>
-
-                      <label className="checkout-field checkout-field--full">
-                        <span>Estado</span>
-                        <select
-                          value={checkout.state}
-                          onChange={(event) =>
-                            setCheckout({ ...checkout, state: event.target.value })
-                          }
-                        >
-                          <option value="">Selecione um estado</option>
-                          {[
-                            "AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA",
-                            "PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"
-                          ].map((uf) => (
-                            <option key={uf} value={uf}>{uf}</option>
-                          ))}
-                        </select>
                       </label>
                     </div>
                   </article>
