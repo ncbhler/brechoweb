@@ -1807,7 +1807,6 @@ function App() {
             </header>
 
             <div className="product-modal__tags product-modal__tags--inline">
-              <span className="badge badge--glass">{selectedProduct.sector}</span>
               {selectedProduct.sector === "Infantil" ? (
                 <span className="badge badge--kids">Infantil</span>
               ) : (
