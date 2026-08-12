@@ -1,4 +1,4 @@
-import type { Product } from "../types";
+﻿import type { Product } from "../types";
 
 const buildProducts = (): Product[] => {
   const now = new Date();
@@ -196,19 +196,21 @@ const buildProducts = (): Product[] => {
       featured: true
     },
     {
-      id: "conjunto-infantil-estampado",
-      name: "Conjunto infantil estampado",
-      description: "Conjunto divertido com malha macia para o dia a dia da crianca.",
-      price: 69.9,
-      imageUrl:
-        "https://coresg-normal.trae.ai/api/ide/v1/text_to_image?prompt=cute%20premium%20ecommerce%20photo%20of%20a%20colorful%20kids%20clothing%20set%20with%20soft%20pastel%20prints%20on%20a%20bright%20clean%20background%2C%20soft%20studio%20lighting&image_size=portrait_4_3",
+      id: "conjunto-adulto-saia-casaquinho-preto",
+      name: "Conjunto feminino saia casaquinho preto",
+      description: "Conjunto feminino com saia midi e casaquinho preto, detalhes em strass, para looks sociais e festivos.",
+      price: 99,
+      imageUrl: "",
       category: "Conjuntos",
-      brand: "Puket",
-      color: "Colorido",
-      size: "6 anos",
+      brand: "",
+      color: "Preto",
+      size: "G",
       condition: "Excelente",
-      sector: "Infantil",
-      createdAt: daysAgo(11, 14)
+      sector: "Feminino",
+      isKids: false,
+      createdAt: daysAgo(1, 10),
+      isNew: true,
+      featured: true
     },
     {
       id: "camiseta-infantil-tema",

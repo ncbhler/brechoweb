@@ -15,6 +15,7 @@ export type Product = {
   createdAt: Date;
   featured?: boolean;
   isNew?: boolean;
+  isKids?: boolean;
 };
 
 export type ProductsPagination = {

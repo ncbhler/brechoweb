@@ -68,7 +68,10 @@ const FEMININE_HINTS = [
   "feminino",
   "mulher",
   "mulheres",
-  "feminina"
+  "feminina",
+  "feminina",
+  "femea",
+  "fêmea"
 ];
 
 const MASCULINE_HINTS = [
@@ -86,8 +89,10 @@ const MASCULINE_HINTS = [
   "tenis masculino",
   "tênis masculino",
   "masculino",
+  "masculina",
   "homem",
-  "homens"
+  "homens",
+  "macho"
 ];
 
 const KIDS_HINTS = [
@@ -102,7 +107,34 @@ const KIDS_HINTS = [
   "baby"
 ];
 
-const resolveSectorByText = (value: unknown): Sector | null => {
+const parseKidsFlag = (value: unknown): { kids: boolean; explicit: boolean } => {
+  if (typeof value === "boolean") {
+    return { kids: value, explicit: true };
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return { kids: value === 1, explicit: true };
+  }
+
+  if (typeof value === "string") {
+    const normalized = value
+      .trim()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+
+    if (["true", "1", "sim", "s", "yes", "y"].includes(normalized)) {
+      return { kids: true, explicit: true };
+    }
+    if (["false", "0", "nao", "n", "no", "not"].includes(normalized)) {
+      return { kids: false, explicit: true };
+    }
+  }
+
+  return { kids: false, explicit: false };
+};
+
+const resolveSectorByText = (value: unknown, allowKids = true): Sector | null => {
   if (typeof value !== "string" || !value.trim()) {
     return null;
   }
@@ -116,7 +148,7 @@ const resolveSectorByText = (value: unknown): Sector | null => {
     return value.trim() as Sector;
   }
 
-  if (KIDS_HINTS.some((hint) => normalized.includes(hint))) {
+  if (allowKids && KIDS_HINTS.some((hint) => normalized.includes(hint))) {
     return "Infantil";
   }
 
@@ -148,12 +180,17 @@ const formatSectorFromApi = (
   infantil: unknown,
   fallbackContext: { category?: string; name?: string; description?: string }
 ): Sector => {
-  if (Boolean(infantil)) {
+  const kidsParsed = parseKidsFlag(infantil);
+
+  if (kidsParsed.explicit && kidsParsed.kids) {
     return "Infantil";
   }
 
+  const explicitAdult = kidsParsed.explicit && !kidsParsed.kids;
+  const allowHeuristicKids = !explicitAdult;
+
   if (typeof genero === "string" && genero.trim()) {
-    const direct = resolveSectorByText(genero);
+    const direct = resolveSectorByText(genero, allowHeuristicKids);
     if (direct) {
       return direct;
     }
@@ -168,9 +205,19 @@ const formatSectorFromApi = (
     .filter(Boolean)
     .join(" ");
 
-  const byContext = resolveSectorByText(context);
+  const byContext = resolveSectorByText(context, allowHeuristicKids);
   if (byContext) {
     return byContext;
+  }
+
+  if (!allowHeuristicKids) {
+    if (typeof genero === "string" && genero.trim()) {
+      const direct = resolveSectorByText(genero, true);
+      if (direct && direct === "Masculino") return "Masculino";
+      if (direct && direct === "Feminino") return "Feminino";
+    }
+    const byContextRetry = resolveSectorByText(context, true);
+    if (byContextRetry === "Masculino") return "Masculino";
   }
 
   return "Feminino";
@@ -316,6 +363,9 @@ const toProduct = (item: RawRecord, index: number): Product | null => {
     description
   });
 
+  const kidsParsed = parseKidsFlag(item.infantil);
+  const isKids = kidsParsed.explicit ? kidsParsed.kids : sector === "Infantil";
+
   const size =
     String(item.size ?? item.tamanho ?? "Unico").trim() || "Unico";
   const condition = buildConditionFromFields(item.condicao ?? item.condition);
@@ -336,7 +386,8 @@ const toProduct = (item: RawRecord, index: number): Product | null => {
     sector,
     createdAt,
     featured: Boolean(item.featured ?? item.destaque),
-    isNew: computedIsNew
+    isNew: computedIsNew,
+    isKids
   };
 };
 

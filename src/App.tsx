@@ -1818,7 +1818,7 @@ function App() {
             </header>
 
             <div className="product-modal__tags product-modal__tags--inline">
-              {selectedProduct.sector === "Infantil" ? (
+              {selectedProduct.isKids ?? selectedProduct.sector === "Infantil" ? (
                 <span className="badge badge--kids">Infantil</span>
               ) : (
                 <span className="badge badge--adult">Adulto</span>
@@ -1895,7 +1895,7 @@ function App() {
                   </div>
                   <div>
                     <dt>Publico alvo</dt>
-                    <dd>{selectedProduct.sector === "Infantil" ? "Infantil" : "Adulto"}</dd>
+                    <dd>{selectedProduct.isKids ?? selectedProduct.sector === "Infantil" ? "Infantil" : "Adulto"}</dd>
                   </div>
                 </dl>
 
