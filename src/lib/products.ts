@@ -163,18 +163,6 @@ const resolveSectorByText = (value: unknown, allowKids = true): Sector | null =>
   return null;
 };
 
-const CATEGORY_SECTOR_OVERRIDE: Record<string, Sector> = {
-  Vestidos: "Feminino",
-  Saias: "Feminino",
-  Blusas: "Feminino",
-  Acessorios: "Feminino",
-  "Acessórios": "Feminino",
-  Camisas: "Masculino",
-  Bermudas: "Masculino",
-  Calcas: "Masculino",
-  Calças: "Masculino"
-};
-
 const formatSectorFromApi = (
   genero: unknown,
   infantil: unknown,
@@ -194,11 +182,6 @@ const formatSectorFromApi = (
     if (direct) {
       return direct;
     }
-  }
-
-  const category = fallbackContext.category ?? "";
-  if (CATEGORY_SECTOR_OVERRIDE[category]) {
-    return CATEGORY_SECTOR_OVERRIDE[category];
   }
 
   const context = [fallbackContext.category, fallbackContext.name, fallbackContext.description]
@@ -349,6 +332,9 @@ const toProduct = (item: RawRecord, index: number): Product | null => {
     new Date(fallbackCreatedAtMs)
   );
 
+  const rawCategoriaValue =
+    typeof item.categoria === "string" ? item.categoria :
+    typeof item.category === "string" ? item.category : null;
   const category = formatCategory(item.category ?? item.categoria);
   const brand = String(item.brand ?? item.marca ?? "").trim();
   const color = String(item.color ?? item.cor ?? "").trim();
@@ -379,6 +365,7 @@ const toProduct = (item: RawRecord, index: number): Product | null => {
     price: price <= 0 ? 0 : price,
     imageUrl: typeof imageUrl === "string" ? imageUrl : "",
     category,
+    rawCategory: rawCategoriaValue,
     brand,
     color,
     size,

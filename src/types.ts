@@ -7,6 +7,7 @@ export type Product = {
   price: number;
   imageUrl: string;
   category: string;
+  rawCategory?: string | null;
   brand: string;
   size: string;
   color: string;

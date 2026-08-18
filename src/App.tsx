@@ -26,6 +26,18 @@ const normalizeForSearch = (value: string) =>
     .toLowerCase()
     .trim();
 
+const normalizeCategoryKey = (value: string) => {
+  const base = normalizeForSearch(value);
+  const withoutTrailingS = base.endsWith("s") ? base.slice(0, -1) : base;
+  return withoutTrailingS || base;
+};
+
+const sameCategoryFuzzy = (a: string, b: string) =>
+  normalizeCategoryKey(a) === normalizeCategoryKey(b);
+
+const findCategoryFuzzy = (list: string[], target: string) =>
+  list.find((candidate) => sameCategoryFuzzy(candidate, target));
+
 const ROUTES: Array<{ key: Route; label: string }> = [
   { key: "catalogo", label: "Produtos" },
   { key: "sobre", label: "Sobre o BrechoWeb" }
@@ -457,13 +469,49 @@ function App() {
     return () => window.clearTimeout(timeoutId);
   }, [query]);
 
+  const displayCategoryToRaw = useMemo(() => {
+    const rawMap = new Map<string, Set<string>>();
+    for (const product of products) {
+      if (product.rawCategory) {
+        const key = normalizeCategoryKey(product.category);
+        if (!rawMap.has(key)) rawMap.set(key, new Set());
+        rawMap.get(key)!.add(product.rawCategory);
+      }
+    }
+
+    const map = new Map<string, string>();
+    for (const product of products) {
+      if (map.has(product.category)) continue;
+      const key = normalizeCategoryKey(product.category);
+      const candidates = Array.from(rawMap.get(key) ?? []);
+      if (!candidates.length) continue;
+
+      candidates.sort((a, b) => {
+        const lower = a.localeCompare(b, "pt-BR", { sensitivity: "base" });
+        if (lower !== 0) return lower;
+        return a.length - b.length;
+      });
+      map.set(product.category, candidates[0]);
+    }
+    return map;
+  }, [products]);
+
+  const findRawCategoryFuzzy = useCallback((displayCategory: string) => {
+    let exact = displayCategoryToRaw.get(displayCategory);
+    if (exact) return exact;
+    const entries = Array.from(displayCategoryToRaw.entries());
+    const match = entries.find(([display]) => sameCategoryFuzzy(display, displayCategory));
+    return match ? match[1] : undefined;
+  }, [displayCategoryToRaw]);
+
   const activeCategoryForApi = useMemo(() => {
     if (selectedCategory === "Todos" || selectedCategory === SPECIAL_CATEGORIES.Novidades) {
       return undefined;
     }
 
-    return selectedCategory;
-  }, [selectedCategory]);
+    const raw = findRawCategoryFuzzy(selectedCategory);
+    return raw ?? selectedCategory;
+  }, [selectedCategory, findRawCategoryFuzzy]);
 
   const activeSectorForApi = useMemo(() => {
     if (selectedSector === "Todos") {
@@ -535,7 +583,7 @@ function App() {
           ? true
           : isNovidades
             ? isNewlyReleased(product.createdAt, now)
-            : product.category === selectedCategory;
+            : sameCategoryFuzzy(product.category, selectedCategory);
 
       let matchesQuery = true;
       if (normalizedQuery) {
@@ -647,6 +695,58 @@ function App() {
     return groups.sectorCategories;
   }, [products]);
 
+  const availableSectors = useMemo(() => {
+    return SECTORS.filter((sector) => sectorCategoryGroups[sector]?.length > 0);
+  }, [sectorCategoryGroups]);
+
+  const sectorFilterOptions = useMemo<SectorFilter[]>(() => {
+    if (availableSectors.length === 0) {
+      return ["Todos"];
+    }
+    return ["Todos", ...availableSectors];
+  }, [availableSectors]);
+
+  const hasAnyNewProduct = useMemo(() => {
+    const now = new Date();
+    return products.some((product) => isNewlyReleased(product.createdAt, now));
+  }, [products]);
+
+  useEffect(() => {
+    if (products.length === 0 || isInitialLoading || isLoadingMore) {
+      return;
+    }
+    if (selectedSector !== "Todos" && !availableSectors.includes(selectedSector as Sector)) {
+      setSelectedSector("Todos");
+      setSelectedCategory("Todos");
+    }
+  }, [availableSectors, selectedSector, products, isInitialLoading, isLoadingMore]);
+
+  useEffect(() => {
+    if (products.length === 0 || isInitialLoading || isLoadingMore) {
+      return;
+    }
+    const isCategorySpecial = selectedCategory === SPECIAL_CATEGORIES.Novidades;
+    if (isCategorySpecial && !hasAnyNewProduct) {
+      setSelectedCategory("Todos");
+      return;
+    }
+    if (!isCategorySpecial && selectedCategory !== "Todos") {
+      const allowed =
+        selectedSector === "Todos"
+          ? getSectorsAndCategoriesFromProducts(products).allCategories
+          : sectorCategoryGroups[selectedSector as Sector] ?? [];
+      const matched = findCategoryFuzzy(allowed, selectedCategory);
+      if (!matched) {
+        setSelectedCategory("Todos");
+      }
+    }
+  }, [products, selectedSector, selectedCategory, sectorCategoryGroups, hasAnyNewProduct, isInitialLoading, isLoadingMore]);
+
+
+
+
+
+
   const categories = useMemo(() => {
     const groups = getSectorsAndCategoriesFromProducts(products);
     const realCategories =
@@ -654,8 +754,12 @@ function App() {
         ? groups.allCategories
         : groups.sectorCategories[selectedSector] ?? [];
 
-    return ["Todos", SPECIAL_CATEGORIES.Novidades, ...realCategories];
-  }, [products, selectedSector]);
+    const base = ["Todos", ...realCategories];
+    if (hasAnyNewProduct) {
+      base.splice(1, 0, SPECIAL_CATEGORIES.Novidades);
+    }
+    return base;
+  }, [products, selectedSector, hasAnyNewProduct]);
 
   const canLoadMore =
     pagination.hasMore &&
@@ -925,7 +1029,7 @@ function App() {
             </div>
 
             <div className="sector-list" role="tablist" aria-label="Setores">
-              {SECTORS.map((sector) => {
+              {SECTORS.filter((sector) => availableSectors.includes(sector)).map((sector) => {
                 const hasCategories = sectorCategoryGroups[sector].length > 0;
                 const isSectorActive =
                   route === "catalogo" &&
@@ -1201,7 +1305,7 @@ function App() {
               </label>
 
               <div className="chips chips--sector" role="tablist" aria-label="Setores">
-                {(["Todos", ...SECTORS] as SectorFilter[]).map((sector) => (
+                {sectorFilterOptions.map((sector) => (
                   <button
                     key={sector}
                     type="button"
@@ -1264,19 +1368,25 @@ function App() {
                 </div>
 
                 <div className="catalogo-pagination" aria-label="Paginacao do catalogo">
-                  <div className="pagination">
-                    {isLoadingMore ? (
-                      <div className="pagination__loading">Carregando mais pecas...</div>
-                    ) : canLoadMore ? (
-                      <button
-                        type="button"
-                        className="button pagination__load-more"
-                        onClick={handleLoadMore}
-                      >
-                        Carregar mais
-                      </button>
-                    ) : null}
-                  </div>
+                  {isLoadingMore ? (
+                    <div className="product-grid product-grid--two" aria-label="Carregando mais pecas">
+                      {Array.from({ length: 6 }).map((_, index) => (
+                        <ProductSkeleton key={`loadmore-${index}`} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="pagination">
+                      {canLoadMore ? (
+                        <button
+                          type="button"
+                          className="button pagination__load-more"
+                          onClick={handleLoadMore}
+                        >
+                          Carregar mais
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
