@@ -419,42 +419,6 @@ type CartItem = {
   quantity: number;
 };
 
-type FetchDebug = {
-  startedAt: string | null;
-  finishedAt: string | null;
-  durationMs: number | null;
-  clickedCategory: string;
-  clickedSector: SectorFilter;
-  sentCategory: string | null;
-  sentSector: { genero?: string; infantil?: string };
-  sentOffset: number;
-  status: "idle" | "loading" | "success" | "error";
-  returnedCount: number | null;
-  returnedCategorySamples: string[];
-  returnedRawCategorySamples: string[];
-  errorMessage: string | null;
-  source: "api" | "mock" | null;
-  fetchCount: number;
-};
-
-const initialFetchDebug: FetchDebug = {
-  startedAt: null,
-  finishedAt: null,
-  durationMs: null,
-  clickedCategory: "Todos",
-  clickedSector: "Todos",
-  sentCategory: null,
-  sentSector: {},
-  sentOffset: 0,
-  status: "idle",
-  returnedCount: null,
-  returnedCategorySamples: [],
-  returnedRawCategorySamples: [],
-  errorMessage: null,
-  source: null,
-  fetchCount: 0
-};
-
 function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -479,7 +443,6 @@ function App() {
   const [isZoomImageOpen, setIsZoomImageOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutForm>(initialCheckoutForm);
   const [checkoutStep, setCheckoutStep] = useState<"details" | "success">("details");
-  const [fetchDebug, setFetchDebug] = useState<FetchDebug>(initialFetchDebug);
 
   const rawCategoryStableRef = useRef<Map<string, string>>(new Map());
 
@@ -563,29 +526,32 @@ function App() {
     return raw ?? selectedCategory;
   }, [selectedCategory, findRawCategoryStable]);
 
+  const fetchCountRef = useRef(0);
+
   useEffect(() => {
     const controller = new AbortController();
 
     const loadProducts = async () => {
+      fetchCountRef.current += 1;
+      const fetchId = fetchCountRef.current;
       const startedAt = new Date();
 
-      setFetchDebug((prev) => ({
-        ...prev,
-        fetchCount: prev.fetchCount + 1,
-        status: "loading",
-        startedAt: startedAt.toISOString(),
-        finishedAt: null,
-        durationMs: null,
-        clickedCategory: selectedCategory,
-        clickedSector: selectedSector,
-        sentCategory: activeCategoryForApi ?? null,
-        sentSector: { ...activeSectorForApi },
-        sentOffset: pagination.offset,
-        returnedCount: null,
-        returnedCategorySamples: [],
-        returnedRawCategorySamples: [],
-        errorMessage: null
-      }));
+      const clicked = { sector: selectedSector, category: selectedCategory };
+      const sent = {
+        categoria: activeCategoryForApi ?? null,
+        genero: activeSectorForApi.genero ?? null,
+        infantil: activeSectorForApi.infantil ?? null,
+        offset: pagination.offset,
+        limit: pagination.limit,
+        q: debouncedQuery || null
+      };
+
+      console.groupCollapsed(
+        `[BrechoWeb] Fetch #${fetchId} · [${clicked.sector}] ${clicked.category} · offset=${sent.offset}`
+      );
+      console.time(`[BrechoWeb] Fetch #${fetchId} duration`);
+      console.log("🖱️  Clicado (seleção do usuário):", clicked);
+      console.log("📤 Enviado para API:", sent);
 
       if (pagination.offset === 0) {
         setIsInitialLoading(true);
@@ -607,37 +573,49 @@ function App() {
         );
 
         if (controller.signal.aborted) {
+          console.warn("⛔ Request abortada (dispatch de outra requisição).");
+          console.timeEnd(`[BrechoWeb] Fetch #${fetchId} duration`);
+          console.groupEnd();
           return;
         }
 
         appendFeed(result);
 
         const finishedAt = new Date();
-        const uniqDisplay = Array.from(new Set(result.products.map(p => p.category))).slice(0, 8);
-        const uniqRaw = Array.from(new Set(result.products.map(p => p.rawCategory).filter(Boolean) as string[])).slice(0, 8);
+        const durationMs = Number(finishedAt) - Number(startedAt);
+        const uniqDisplay = Array.from(new Set(result.products.map(p => p.category))).slice(0, 10);
+        const uniqRaw = Array.from(new Set(result.products.map(p => p.rawCategory).filter(Boolean) as string[])).slice(0, 10);
 
-        setFetchDebug((prev) => ({
-          ...prev,
-          status: "success",
-          finishedAt: finishedAt.toISOString(),
-          durationMs: Number(finishedAt) - Number(startedAt),
-          returnedCount: result.products.length,
-          returnedCategorySamples: uniqDisplay,
-          returnedRawCategorySamples: uniqRaw,
-          source: result.source
-        }));
+        console.log(
+          `✅ Status=200 · source=${result.source} · retornadas=${result.products.length} peças · ${durationMs}ms`
+        );
+        console.log("🧾 Categorias (display) no retorno:", uniqDisplay);
+        console.log("🧾 Categorias (raw/DB)    no retorno:", uniqRaw);
+        if (result.products.length > 0) {
+          console.log(
+            "🔬 Exemplo de peça [0]: display=",
+            result.products[0].category,
+            " · raw=",
+            result.products[0].rawCategory ?? "—",
+            " · name=",
+            result.products[0].name
+          );
+        }
+        console.timeEnd(`[BrechoWeb] Fetch #${fetchId} duration`);
+        console.groupEnd();
       } catch (error) {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) {
+          console.warn("⛔ Request abortada (dispatch de outra requisição).");
+          console.timeEnd(`[BrechoWeb] Fetch #${fetchId} duration`);
+          console.groupEnd();
+          return;
+        }
         const finishedAt = new Date();
-        setFetchDebug((prev) => ({
-          ...prev,
-          status: "error",
-          finishedAt: finishedAt.toISOString(),
-          durationMs: Number(finishedAt) - Number(startedAt),
-          returnedCount: 0,
-          errorMessage: error instanceof Error ? error.message : String(error),
-          source: null
-        }));
+        const durationMs = Number(finishedAt) - Number(startedAt);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`❌ Erro na requisição (${durationMs}ms):`, message);
+        console.timeEnd(`[BrechoWeb] Fetch #${fetchId} duration`);
+        console.groupEnd();
       } finally {
         if (!controller.signal.aborted) {
           setIsInitialLoading(false);
@@ -1360,159 +1338,6 @@ function App() {
       <main className="layout">
         {route === "catalogo" ? (
           <section className="catalogo" id="catalogo">
-            <div
-              className="section-heading"
-              style={{
-                padding: "14px 18px",
-                border: "1px solid #f1c6d0",
-                borderRadius: 12,
-                background: fetchDebug.status === "loading"
-                  ? "linear-gradient(90deg, #fff7f9, #fff1f4)"
-                  : fetchDebug.status === "error"
-                    ? "#fff5f5"
-                    : "#f7fff8",
-                boxShadow: "0 1px 0 rgba(0,0,0,0.02)",
-                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-                fontSize: 12,
-                color: "#5a4250",
-                marginBottom: 18
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  alignItems: "center",
-                  marginBottom: 8,
-                  fontWeight: 600
-                }}
-              >
-                <span
-                  style={{
-                    padding: "3px 8px",
-                    borderRadius: 999,
-                    background: fetchDebug.status === "loading"
-                      ? "#ffe27a"
-                      : fetchDebug.status === "error"
-                        ? "#ffb4b4"
-                        : fetchDebug.status === "success"
-                          ? "#8be0a0"
-                          : "#e6e6e6",
-                    color: "#3a2a30",
-                    textTransform: "uppercase",
-                    letterSpacing: 0.5
-                  }}
-                >
-                  {fetchDebug.status === "loading"
-                    ? "⟳ Carregando..."
-                    : fetchDebug.status === "error"
-                      ? "✗ Erro"
-                      : fetchDebug.status === "success"
-                        ? "✓ Sucesso"
-                        : "○ Ocioso"}
-                </span>
-                <span>Fetch #{fetchDebug.fetchCount}</span>
-                {fetchDebug.durationMs != null && (
-                  <span style={{ opacity: 0.8 }}>⏱ {fetchDebug.durationMs}ms</span>
-                )}
-                {fetchDebug.source && (
-                  <span style={{ opacity: 0.8 }}>
-                    · Fonte:{" "}
-                    <strong>{fetchDebug.source === "api" ? "API real" : "Mock demo"}</strong>
-                  </span>
-                )}
-                {fetchDebug.returnedCount != null && (
-                  <span style={{ opacity: 0.8 }}>· {fetchDebug.returnedCount} peças</span>
-                )}
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-                  gap: "6px 14px"
-                }}
-              >
-                <div>
-                  🖱️ Clicado:{" "}
-                  <strong>
-                    [{fetchDebug.clickedSector}] · {fetchDebug.clickedCategory}
-                  </strong>
-                </div>
-                <div>
-                  📤 Enviado p/ API: categoria ={" "}
-                  <strong>
-                    {fetchDebug.sentCategory != null
-                      ? `"${fetchDebug.sentCategory}"`
-                      : "— (todas)"}
-                  </strong>
-                </div>
-                <div>
-                  📤 Enviado p/ API: gênero ={" "}
-                  <strong>{fetchDebug.sentSector.genero ?? "—"}</strong>
-                  {fetchDebug.sentSector.infantil != null && (
-                    <> · infantil = <strong>{fetchDebug.sentSector.infantil}</strong></>
-                  )}
-                </div>
-                <div>
-                  📄 Página: offset <strong>{fetchDebug.sentOffset}</strong>
-                </div>
-              </div>
-              {fetchDebug.returnedCategorySamples.length > 0 && (
-                <div style={{ marginTop: 8, opacity: 0.9 }}>
-                  🧾 Categorias (display) no retorno:{" "}
-                  {fetchDebug.returnedCategorySamples.map((c, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        display: "inline-block",
-                        margin: "0 4px 4px 0",
-                        padding: "1px 6px",
-                        border: "1px dashed #e0b8c3",
-                        borderRadius: 6
-                      }}
-                    >
-                      {c}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {fetchDebug.returnedRawCategorySamples.length > 0 && (
-                <div style={{ marginTop: 4, opacity: 0.9 }}>
-                  🧾 Categorias (raw/DB) no retorno:{" "}
-                  {fetchDebug.returnedRawCategorySamples.map((c, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        display: "inline-block",
-                        margin: "0 4px 4px 0",
-                        padding: "1px 6px",
-                        border: "1px dashed #9ed6e8",
-                        borderRadius: 6,
-                        background: "#f4fbff"
-                      }}
-                    >
-                      {c}
-                    </span>
-                  ))}
-                </div>
-              )}
-              {fetchDebug.errorMessage && (
-                <div
-                  style={{
-                    marginTop: 8,
-                    padding: "8px 10px",
-                    background: "#fff5f5",
-                    border: "1px solid #ffbcbc",
-                    borderRadius: 8,
-                    color: "#8c2a2a"
-                  }}
-                >
-                  Erro: {fetchDebug.errorMessage}
-                </div>
-              )}
-            </div>
-
             <div className="section-heading">
               <div>
                 <span className="eyebrow eyebrow--muted">
