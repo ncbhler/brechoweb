@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { getProducts, getSectorsAndCategoriesFromProducts } from "./lib/products";
 import type { Product, ProductsFeed, ProductsPagination, Sector } from "./types";
 
@@ -419,6 +419,42 @@ type CartItem = {
   quantity: number;
 };
 
+type FetchDebug = {
+  startedAt: string | null;
+  finishedAt: string | null;
+  durationMs: number | null;
+  clickedCategory: string;
+  clickedSector: SectorFilter;
+  sentCategory: string | null;
+  sentSector: { genero?: string; infantil?: string };
+  sentOffset: number;
+  status: "idle" | "loading" | "success" | "error";
+  returnedCount: number | null;
+  returnedCategorySamples: string[];
+  returnedRawCategorySamples: string[];
+  errorMessage: string | null;
+  source: "api" | "mock" | null;
+  fetchCount: number;
+};
+
+const initialFetchDebug: FetchDebug = {
+  startedAt: null,
+  finishedAt: null,
+  durationMs: null,
+  clickedCategory: "Todos",
+  clickedSector: "Todos",
+  sentCategory: null,
+  sentSector: {},
+  sentOffset: 0,
+  status: "idle",
+  returnedCount: null,
+  returnedCategorySamples: [],
+  returnedRawCategorySamples: [],
+  errorMessage: null,
+  source: null,
+  fetchCount: 0
+};
+
 function App() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
@@ -443,11 +479,51 @@ function App() {
   const [isZoomImageOpen, setIsZoomImageOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutForm>(initialCheckoutForm);
   const [checkoutStep, setCheckoutStep] = useState<"details" | "success">("details");
+  const [fetchDebug, setFetchDebug] = useState<FetchDebug>(initialFetchDebug);
+
+  const rawCategoryStableRef = useRef<Map<string, string>>(new Map());
+
+  const persistRawCategoriesFromProducts = useCallback((list: Product[]) => {
+    const groups = new Map<string, string[]>();
+    for (const product of list) {
+      if (!product.rawCategory) continue;
+      const key = normalizeCategoryKey(product.category);
+      if (!groups.has(key)) groups.set(key, []);
+      const arr = groups.get(key)!;
+      if (!arr.includes(product.rawCategory)) arr.push(product.rawCategory);
+    }
+
+    for (const product of list) {
+      if (rawCategoryStableRef.current.has(product.category)) continue;
+      const key = normalizeCategoryKey(product.category);
+      const candidates = groups.get(key) ?? [];
+      if (!candidates.length) continue;
+      const sorted = [...candidates].sort((a, b) => {
+        const base = a.localeCompare(b, "pt-BR", { sensitivity: "base" });
+        if (base !== 0) return base;
+        return a.length - b.length;
+      });
+      rawCategoryStableRef.current.set(product.category, sorted[0]);
+    }
+  }, []);
+
+  useEffect(() => {
+    persistRawCategoriesFromProducts(products);
+  }, [products, persistRawCategoriesFromProducts]);
+
+  const findRawCategoryStable = useCallback((displayCategory: string) => {
+    const exact = rawCategoryStableRef.current.get(displayCategory);
+    if (exact) return exact;
+    const entries = Array.from(rawCategoryStableRef.current.entries());
+    const matched = entries.find(([display]) => sameCategoryFuzzy(display, displayCategory));
+    return matched ? matched[1] : undefined;
+  }, []);
 
   const appendFeed = useCallback((next: ProductsFeed) => {
     setFeed(next);
     setPagination(next.pagination);
     setSource(next.source);
+    persistRawCategoriesFromProducts(next.products);
 
     if (next.pagination.offset === 0) {
       setProducts(next.products);
@@ -459,7 +535,7 @@ function App() {
       const extras = next.products.filter((product) => !seen.has(product.id));
       return [...previousProducts, ...extras];
     });
-  }, []);
+  }, [persistRawCategoriesFromProducts]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -468,50 +544,6 @@ function App() {
 
     return () => window.clearTimeout(timeoutId);
   }, [query]);
-
-  const displayCategoryToRaw = useMemo(() => {
-    const rawMap = new Map<string, Set<string>>();
-    for (const product of products) {
-      if (product.rawCategory) {
-        const key = normalizeCategoryKey(product.category);
-        if (!rawMap.has(key)) rawMap.set(key, new Set());
-        rawMap.get(key)!.add(product.rawCategory);
-      }
-    }
-
-    const map = new Map<string, string>();
-    for (const product of products) {
-      if (map.has(product.category)) continue;
-      const key = normalizeCategoryKey(product.category);
-      const candidates = Array.from(rawMap.get(key) ?? []);
-      if (!candidates.length) continue;
-
-      candidates.sort((a, b) => {
-        const lower = a.localeCompare(b, "pt-BR", { sensitivity: "base" });
-        if (lower !== 0) return lower;
-        return a.length - b.length;
-      });
-      map.set(product.category, candidates[0]);
-    }
-    return map;
-  }, [products]);
-
-  const findRawCategoryFuzzy = useCallback((displayCategory: string) => {
-    let exact = displayCategoryToRaw.get(displayCategory);
-    if (exact) return exact;
-    const entries = Array.from(displayCategoryToRaw.entries());
-    const match = entries.find(([display]) => sameCategoryFuzzy(display, displayCategory));
-    return match ? match[1] : undefined;
-  }, [displayCategoryToRaw]);
-
-  const activeCategoryForApi = useMemo(() => {
-    if (selectedCategory === "Todos" || selectedCategory === SPECIAL_CATEGORIES.Novidades) {
-      return undefined;
-    }
-
-    const raw = findRawCategoryFuzzy(selectedCategory);
-    return raw ?? selectedCategory;
-  }, [selectedCategory, findRawCategoryFuzzy]);
 
   const activeSectorForApi = useMemo(() => {
     if (selectedSector === "Todos") {
@@ -523,10 +555,38 @@ function App() {
     return { genero: selectedSector.toLowerCase(), infantil: undefined };
   }, [selectedSector]);
 
+  const activeCategoryForApi = useMemo(() => {
+    if (selectedCategory === "Todos" || selectedCategory === SPECIAL_CATEGORIES.Novidades) {
+      return undefined;
+    }
+    const raw = findRawCategoryStable(selectedCategory);
+    return raw ?? selectedCategory;
+  }, [selectedCategory, findRawCategoryStable]);
+
   useEffect(() => {
     const controller = new AbortController();
 
     const loadProducts = async () => {
+      const startedAt = new Date();
+
+      setFetchDebug((prev) => ({
+        ...prev,
+        fetchCount: prev.fetchCount + 1,
+        status: "loading",
+        startedAt: startedAt.toISOString(),
+        finishedAt: null,
+        durationMs: null,
+        clickedCategory: selectedCategory,
+        clickedSector: selectedSector,
+        sentCategory: activeCategoryForApi ?? null,
+        sentSector: { ...activeSectorForApi },
+        sentOffset: pagination.offset,
+        returnedCount: null,
+        returnedCategorySamples: [],
+        returnedRawCategorySamples: [],
+        errorMessage: null
+      }));
+
       if (pagination.offset === 0) {
         setIsInitialLoading(true);
       } else {
@@ -551,6 +611,33 @@ function App() {
         }
 
         appendFeed(result);
+
+        const finishedAt = new Date();
+        const uniqDisplay = Array.from(new Set(result.products.map(p => p.category))).slice(0, 8);
+        const uniqRaw = Array.from(new Set(result.products.map(p => p.rawCategory).filter(Boolean) as string[])).slice(0, 8);
+
+        setFetchDebug((prev) => ({
+          ...prev,
+          status: "success",
+          finishedAt: finishedAt.toISOString(),
+          durationMs: Number(finishedAt) - Number(startedAt),
+          returnedCount: result.products.length,
+          returnedCategorySamples: uniqDisplay,
+          returnedRawCategorySamples: uniqRaw,
+          source: result.source
+        }));
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        const finishedAt = new Date();
+        setFetchDebug((prev) => ({
+          ...prev,
+          status: "error",
+          finishedAt: finishedAt.toISOString(),
+          durationMs: Number(finishedAt) - Number(startedAt),
+          returnedCount: 0,
+          errorMessage: error instanceof Error ? error.message : String(error),
+          source: null
+        }));
       } finally {
         if (!controller.signal.aborted) {
           setIsInitialLoading(false);
@@ -562,7 +649,7 @@ function App() {
     void loadProducts();
 
     return () => controller.abort();
-  }, [debouncedQuery, activeCategoryForApi, activeSectorForApi, pagination.limit, pagination.offset, appendFeed]);
+  }, [debouncedQuery, activeCategoryForApi, activeSectorForApi, pagination.limit, pagination.offset, appendFeed, selectedCategory, selectedSector]);
 
   useEffect(() => {
     setProducts([]);
@@ -1273,6 +1360,159 @@ function App() {
       <main className="layout">
         {route === "catalogo" ? (
           <section className="catalogo" id="catalogo">
+            <div
+              className="section-heading"
+              style={{
+                padding: "14px 18px",
+                border: "1px solid #f1c6d0",
+                borderRadius: 12,
+                background: fetchDebug.status === "loading"
+                  ? "linear-gradient(90deg, #fff7f9, #fff1f4)"
+                  : fetchDebug.status === "error"
+                    ? "#fff5f5"
+                    : "#f7fff8",
+                boxShadow: "0 1px 0 rgba(0,0,0,0.02)",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                fontSize: 12,
+                color: "#5a4250",
+                marginBottom: 18
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  alignItems: "center",
+                  marginBottom: 8,
+                  fontWeight: 600
+                }}
+              >
+                <span
+                  style={{
+                    padding: "3px 8px",
+                    borderRadius: 999,
+                    background: fetchDebug.status === "loading"
+                      ? "#ffe27a"
+                      : fetchDebug.status === "error"
+                        ? "#ffb4b4"
+                        : fetchDebug.status === "success"
+                          ? "#8be0a0"
+                          : "#e6e6e6",
+                    color: "#3a2a30",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.5
+                  }}
+                >
+                  {fetchDebug.status === "loading"
+                    ? "⟳ Carregando..."
+                    : fetchDebug.status === "error"
+                      ? "✗ Erro"
+                      : fetchDebug.status === "success"
+                        ? "✓ Sucesso"
+                        : "○ Ocioso"}
+                </span>
+                <span>Fetch #{fetchDebug.fetchCount}</span>
+                {fetchDebug.durationMs != null && (
+                  <span style={{ opacity: 0.8 }}>⏱ {fetchDebug.durationMs}ms</span>
+                )}
+                {fetchDebug.source && (
+                  <span style={{ opacity: 0.8 }}>
+                    · Fonte:{" "}
+                    <strong>{fetchDebug.source === "api" ? "API real" : "Mock demo"}</strong>
+                  </span>
+                )}
+                {fetchDebug.returnedCount != null && (
+                  <span style={{ opacity: 0.8 }}>· {fetchDebug.returnedCount} peças</span>
+                )}
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  gap: "6px 14px"
+                }}
+              >
+                <div>
+                  🖱️ Clicado:{" "}
+                  <strong>
+                    [{fetchDebug.clickedSector}] · {fetchDebug.clickedCategory}
+                  </strong>
+                </div>
+                <div>
+                  📤 Enviado p/ API: categoria ={" "}
+                  <strong>
+                    {fetchDebug.sentCategory != null
+                      ? `"${fetchDebug.sentCategory}"`
+                      : "— (todas)"}
+                  </strong>
+                </div>
+                <div>
+                  📤 Enviado p/ API: gênero ={" "}
+                  <strong>{fetchDebug.sentSector.genero ?? "—"}</strong>
+                  {fetchDebug.sentSector.infantil != null && (
+                    <> · infantil = <strong>{fetchDebug.sentSector.infantil}</strong></>
+                  )}
+                </div>
+                <div>
+                  📄 Página: offset <strong>{fetchDebug.sentOffset}</strong>
+                </div>
+              </div>
+              {fetchDebug.returnedCategorySamples.length > 0 && (
+                <div style={{ marginTop: 8, opacity: 0.9 }}>
+                  🧾 Categorias (display) no retorno:{" "}
+                  {fetchDebug.returnedCategorySamples.map((c, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        display: "inline-block",
+                        margin: "0 4px 4px 0",
+                        padding: "1px 6px",
+                        border: "1px dashed #e0b8c3",
+                        borderRadius: 6
+                      }}
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {fetchDebug.returnedRawCategorySamples.length > 0 && (
+                <div style={{ marginTop: 4, opacity: 0.9 }}>
+                  🧾 Categorias (raw/DB) no retorno:{" "}
+                  {fetchDebug.returnedRawCategorySamples.map((c, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        display: "inline-block",
+                        margin: "0 4px 4px 0",
+                        padding: "1px 6px",
+                        border: "1px dashed #9ed6e8",
+                        borderRadius: 6,
+                        background: "#f4fbff"
+                      }}
+                    >
+                      {c}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {fetchDebug.errorMessage && (
+                <div
+                  style={{
+                    marginTop: 8,
+                    padding: "8px 10px",
+                    background: "#fff5f5",
+                    border: "1px solid #ffbcbc",
+                    borderRadius: 8,
+                    color: "#8c2a2a"
+                  }}
+                >
+                  Erro: {fetchDebug.errorMessage}
+                </div>
+              )}
+            </div>
+
             <div className="section-heading">
               <div>
                 <span className="eyebrow eyebrow--muted">
