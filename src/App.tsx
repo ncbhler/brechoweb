@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { getProducts, getSectorsAndCategoriesFromProducts } from "./lib/products";
 import type { Product, ProductsFeed, ProductsPagination, Sector } from "./types";
 
@@ -25,6 +25,18 @@ const normalizeForSearch = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .trim();
+
+const normalizeCategoryKey = (value: string) => {
+  const base = normalizeForSearch(value);
+  const withoutTrailingS = base.endsWith("s") ? base.slice(0, -1) : base;
+  return withoutTrailingS || base;
+};
+
+const sameCategoryFuzzy = (a: string, b: string) =>
+  normalizeCategoryKey(a) === normalizeCategoryKey(b);
+
+const findCategoryFuzzy = (list: string[], target: string) =>
+  list.find((candidate) => sameCategoryFuzzy(candidate, target));
 
 const ROUTES: Array<{ key: Route; label: string }> = [
   { key: "catalogo", label: "Produtos" },
@@ -432,10 +444,49 @@ function App() {
   const [checkout, setCheckout] = useState<CheckoutForm>(initialCheckoutForm);
   const [checkoutStep, setCheckoutStep] = useState<"details" | "success">("details");
 
+  const rawCategoryStableRef = useRef<Map<string, string>>(new Map());
+
+  const persistRawCategoriesFromProducts = useCallback((list: Product[]) => {
+    const groups = new Map<string, string[]>();
+    for (const product of list) {
+      if (!product.rawCategory) continue;
+      const key = normalizeCategoryKey(product.category);
+      if (!groups.has(key)) groups.set(key, []);
+      const arr = groups.get(key)!;
+      if (!arr.includes(product.rawCategory)) arr.push(product.rawCategory);
+    }
+
+    for (const product of list) {
+      if (rawCategoryStableRef.current.has(product.category)) continue;
+      const key = normalizeCategoryKey(product.category);
+      const candidates = groups.get(key) ?? [];
+      if (!candidates.length) continue;
+      const sorted = [...candidates].sort((a, b) => {
+        const base = a.localeCompare(b, "pt-BR", { sensitivity: "base" });
+        if (base !== 0) return base;
+        return a.length - b.length;
+      });
+      rawCategoryStableRef.current.set(product.category, sorted[0]);
+    }
+  }, []);
+
+  useEffect(() => {
+    persistRawCategoriesFromProducts(products);
+  }, [products, persistRawCategoriesFromProducts]);
+
+  const findRawCategoryStable = useCallback((displayCategory: string) => {
+    const exact = rawCategoryStableRef.current.get(displayCategory);
+    if (exact) return exact;
+    const entries = Array.from(rawCategoryStableRef.current.entries());
+    const matched = entries.find(([display]) => sameCategoryFuzzy(display, displayCategory));
+    return matched ? matched[1] : undefined;
+  }, []);
+
   const appendFeed = useCallback((next: ProductsFeed) => {
     setFeed(next);
     setPagination(next.pagination);
     setSource(next.source);
+    persistRawCategoriesFromProducts(next.products);
 
     if (next.pagination.offset === 0) {
       setProducts(next.products);
@@ -447,7 +498,7 @@ function App() {
       const extras = next.products.filter((product) => !seen.has(product.id));
       return [...previousProducts, ...extras];
     });
-  }, []);
+  }, [persistRawCategoriesFromProducts]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -456,14 +507,6 @@ function App() {
 
     return () => window.clearTimeout(timeoutId);
   }, [query]);
-
-  const activeCategoryForApi = useMemo(() => {
-    if (selectedCategory === "Todos" || selectedCategory === SPECIAL_CATEGORIES.Novidades) {
-      return undefined;
-    }
-
-    return selectedCategory;
-  }, [selectedCategory]);
 
   const activeSectorForApi = useMemo(() => {
     if (selectedSector === "Todos") {
@@ -475,10 +518,41 @@ function App() {
     return { genero: selectedSector.toLowerCase(), infantil: undefined };
   }, [selectedSector]);
 
+  const activeCategoryForApi = useMemo(() => {
+    if (selectedCategory === "Todos" || selectedCategory === SPECIAL_CATEGORIES.Novidades) {
+      return undefined;
+    }
+    const raw = findRawCategoryStable(selectedCategory);
+    return raw ?? selectedCategory;
+  }, [selectedCategory, findRawCategoryStable]);
+
+  const fetchCountRef = useRef(0);
+
   useEffect(() => {
     const controller = new AbortController();
 
     const loadProducts = async () => {
+      fetchCountRef.current += 1;
+      const fetchId = fetchCountRef.current;
+      const startedAt = new Date();
+
+      const clicked = { sector: selectedSector, category: selectedCategory };
+      const sent = {
+        categoria: activeCategoryForApi ?? null,
+        genero: activeSectorForApi.genero ?? null,
+        infantil: activeSectorForApi.infantil ?? null,
+        offset: pagination.offset,
+        limit: pagination.limit,
+        q: debouncedQuery || null
+      };
+
+      console.groupCollapsed(
+        `[BrechoWeb] Fetch #${fetchId} · [${clicked.sector}] ${clicked.category} · offset=${sent.offset}`
+      );
+      console.time(`[BrechoWeb] Fetch #${fetchId} duration`);
+      console.log("🖱️  Clicado (seleção do usuário):", clicked);
+      console.log("📤 Enviado para API:", sent);
+
       if (pagination.offset === 0) {
         setIsInitialLoading(true);
       } else {
@@ -499,10 +573,49 @@ function App() {
         );
 
         if (controller.signal.aborted) {
+          console.warn("⛔ Request abortada (dispatch de outra requisição).");
+          console.timeEnd(`[BrechoWeb] Fetch #${fetchId} duration`);
+          console.groupEnd();
           return;
         }
 
         appendFeed(result);
+
+        const finishedAt = new Date();
+        const durationMs = Number(finishedAt) - Number(startedAt);
+        const uniqDisplay = Array.from(new Set(result.products.map(p => p.category))).slice(0, 10);
+        const uniqRaw = Array.from(new Set(result.products.map(p => p.rawCategory).filter(Boolean) as string[])).slice(0, 10);
+
+        console.log(
+          `✅ Status=200 · source=${result.source} · retornadas=${result.products.length} peças · ${durationMs}ms`
+        );
+        console.log("🧾 Categorias (display) no retorno:", uniqDisplay);
+        console.log("🧾 Categorias (raw/DB)    no retorno:", uniqRaw);
+        if (result.products.length > 0) {
+          console.log(
+            "🔬 Exemplo de peça [0]: display=",
+            result.products[0].category,
+            " · raw=",
+            result.products[0].rawCategory ?? "—",
+            " · name=",
+            result.products[0].name
+          );
+        }
+        console.timeEnd(`[BrechoWeb] Fetch #${fetchId} duration`);
+        console.groupEnd();
+      } catch (error) {
+        if (controller.signal.aborted) {
+          console.warn("⛔ Request abortada (dispatch de outra requisição).");
+          console.timeEnd(`[BrechoWeb] Fetch #${fetchId} duration`);
+          console.groupEnd();
+          return;
+        }
+        const finishedAt = new Date();
+        const durationMs = Number(finishedAt) - Number(startedAt);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`❌ Erro na requisição (${durationMs}ms):`, message);
+        console.timeEnd(`[BrechoWeb] Fetch #${fetchId} duration`);
+        console.groupEnd();
       } finally {
         if (!controller.signal.aborted) {
           setIsInitialLoading(false);
@@ -514,7 +627,7 @@ function App() {
     void loadProducts();
 
     return () => controller.abort();
-  }, [debouncedQuery, activeCategoryForApi, activeSectorForApi, pagination.limit, pagination.offset, appendFeed]);
+  }, [debouncedQuery, activeCategoryForApi, activeSectorForApi, pagination.limit, pagination.offset, appendFeed, selectedCategory, selectedSector]);
 
   useEffect(() => {
     setProducts([]);
@@ -535,7 +648,7 @@ function App() {
           ? true
           : isNovidades
             ? isNewlyReleased(product.createdAt, now)
-            : product.category === selectedCategory;
+            : sameCategoryFuzzy(product.category, selectedCategory);
 
       let matchesQuery = true;
       if (normalizedQuery) {
@@ -647,6 +760,58 @@ function App() {
     return groups.sectorCategories;
   }, [products]);
 
+  const availableSectors = useMemo(() => {
+    return SECTORS.filter((sector) => sectorCategoryGroups[sector]?.length > 0);
+  }, [sectorCategoryGroups]);
+
+  const sectorFilterOptions = useMemo<SectorFilter[]>(() => {
+    if (availableSectors.length === 0) {
+      return ["Todos"];
+    }
+    return ["Todos", ...availableSectors];
+  }, [availableSectors]);
+
+  const hasAnyNewProduct = useMemo(() => {
+    const now = new Date();
+    return products.some((product) => isNewlyReleased(product.createdAt, now));
+  }, [products]);
+
+  useEffect(() => {
+    if (products.length === 0 || isInitialLoading || isLoadingMore) {
+      return;
+    }
+    if (selectedSector !== "Todos" && !availableSectors.includes(selectedSector as Sector)) {
+      setSelectedSector("Todos");
+      setSelectedCategory("Todos");
+    }
+  }, [availableSectors, selectedSector, products, isInitialLoading, isLoadingMore]);
+
+  useEffect(() => {
+    if (products.length === 0 || isInitialLoading || isLoadingMore) {
+      return;
+    }
+    const isCategorySpecial = selectedCategory === SPECIAL_CATEGORIES.Novidades;
+    if (isCategorySpecial && !hasAnyNewProduct) {
+      setSelectedCategory("Todos");
+      return;
+    }
+    if (!isCategorySpecial && selectedCategory !== "Todos") {
+      const allowed =
+        selectedSector === "Todos"
+          ? getSectorsAndCategoriesFromProducts(products).allCategories
+          : sectorCategoryGroups[selectedSector as Sector] ?? [];
+      const matched = findCategoryFuzzy(allowed, selectedCategory);
+      if (!matched) {
+        setSelectedCategory("Todos");
+      }
+    }
+  }, [products, selectedSector, selectedCategory, sectorCategoryGroups, hasAnyNewProduct, isInitialLoading, isLoadingMore]);
+
+
+
+
+
+
   const categories = useMemo(() => {
     const groups = getSectorsAndCategoriesFromProducts(products);
     const realCategories =
@@ -654,8 +819,12 @@ function App() {
         ? groups.allCategories
         : groups.sectorCategories[selectedSector] ?? [];
 
-    return ["Todos", SPECIAL_CATEGORIES.Novidades, ...realCategories];
-  }, [products, selectedSector]);
+    const base = ["Todos", ...realCategories];
+    if (hasAnyNewProduct) {
+      base.splice(1, 0, SPECIAL_CATEGORIES.Novidades);
+    }
+    return base;
+  }, [products, selectedSector, hasAnyNewProduct]);
 
   const canLoadMore =
     pagination.hasMore &&
@@ -925,7 +1094,7 @@ function App() {
             </div>
 
             <div className="sector-list" role="tablist" aria-label="Setores">
-              {SECTORS.map((sector) => {
+              {SECTORS.filter((sector) => availableSectors.includes(sector)).map((sector) => {
                 const hasCategories = sectorCategoryGroups[sector].length > 0;
                 const isSectorActive =
                   route === "catalogo" &&
@@ -1201,7 +1370,7 @@ function App() {
               </label>
 
               <div className="chips chips--sector" role="tablist" aria-label="Setores">
-                {(["Todos", ...SECTORS] as SectorFilter[]).map((sector) => (
+                {sectorFilterOptions.map((sector) => (
                   <button
                     key={sector}
                     type="button"
@@ -1264,19 +1433,25 @@ function App() {
                 </div>
 
                 <div className="catalogo-pagination" aria-label="Paginacao do catalogo">
-                  <div className="pagination">
-                    {isLoadingMore ? (
-                      <div className="pagination__loading">Carregando mais pecas...</div>
-                    ) : canLoadMore ? (
-                      <button
-                        type="button"
-                        className="button pagination__load-more"
-                        onClick={handleLoadMore}
-                      >
-                        Carregar mais
-                      </button>
-                    ) : null}
-                  </div>
+                  {isLoadingMore ? (
+                    <div className="product-grid product-grid--two" aria-label="Carregando mais pecas">
+                      {Array.from({ length: 6 }).map((_, index) => (
+                        <ProductSkeleton key={`loadmore-${index}`} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="pagination">
+                      {canLoadMore ? (
+                        <button
+                          type="button"
+                          className="button pagination__load-more"
+                          onClick={handleLoadMore}
+                        >
+                          Carregar mais
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
               </>
             ) : (
